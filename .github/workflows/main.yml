@@ -22,7 +22,7 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --noconsole --onefile --name "AutoGrader_v2_Cloud" AutoGrader_Cloud_v2.py
+          pyinstaller --noconsole --onefile --name "AutoGrader_v2" AutoGrader_v2.py
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
