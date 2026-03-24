@@ -4,88 +4,117 @@ from docx import Document
 import easyocr
 import os
 import threading
-from pdf2image import convert_from_path # 需要 poppler
+from pdf2image import convert_from_path
 import numpy as np
-from PIL import Image
+import sys
+
+ctk.set_appearance_mode("System")
+ctk.set_default_color_theme("blue")
 
 class AutoGraderApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("AI 考卷評分系統 (Word/PDF 版)")
-        self.geometry("700x600")
+        self.title("AI 考卷評分系統 v3.0")
+        self.geometry("800x700")
+        
         self.reader = None 
-        self.answer_data = [] # 改用 List 儲存字典
+        self.answer_key = {}
+        # 注意：請確保此路徑正確，或將 poppler 放在程式目錄下
+        self.poppler_path = r"C:\poppler\bin" 
         self.setup_ui()
 
     def setup_ui(self):
-        ctk.CTkLabel(self, text="自動閱卷工具 v2.0", font=("Microsoft JhengHei", 24, "bold")).pack(pady=20)
-        
-        self.btn_ans = ctk.CTkButton(self, text="1. 載入正確解答 (Word)", command=self.load_word_answers)
-        self.btn_ans.pack(pady=10)
+        self.label = ctk.CTkLabel(self, text="自動閱卷系統 (修正版)", font=("Microsoft JhengHei", 24, "bold"))
+        self.label.pack(pady=20)
 
-        self.btn_exam = ctk.CTkButton(self, text="2. 選擇學生考卷 (PDF)", command=self.start_processing_thread, fg_color="green")
-        self.btn_exam.pack(pady=10)
+        self.btn_frame = ctk.CTkFrame(self)
+        self.btn_frame.pack(pady=10, padx=20, fill="x")
 
-        self.result_box = ctk.CTkTextbox(self, width=600, height=350)
+        self.btn_ans = ctk.CTkButton(self.btn_frame, text="1. 載入 Word 解答", command=self.load_word_answers)
+        self.btn_ans.grid(row=0, column=0, padx=20, pady=20)
+
+        self.btn_exam = ctk.CTkButton(self.btn_frame, text="2. 選擇 PDF 考卷評分", command=self.start_grading, fg_color="#2ecc71")
+        self.btn_exam.grid(row=0, column=1, padx=20, pady=20)
+
+        self.status_var = ctk.StringVar(value="狀態：等待載入解答")
+        ctk.CTkLabel(self, textvariable=self.status_var).pack()
+
+        self.result_box = ctk.CTkTextbox(self, width=700, height=400, font=("Consolas", 14))
         self.result_box.pack(pady=20, padx=20)
 
     def load_word_answers(self):
         path = filedialog.askopenfilename(filetypes=[("Word 檔案", "*.docx")])
-        if path:
-            try:
-                doc = Document(path)
-                self.answer_data = []
-                # 假設解答在 Word 的第一個表格中
-                table = doc.tables[0]
-                for i, row in enumerate(table.rows):
-                    if i == 0: continue # 跳過標題列
-                    cells = [cell.text.strip() for cell in row.cells]
-                    # 格式：大題, 小題, 答案, 分數
-                    self.answer_data.append({
-                        "id": f"{cells[0]}-{cells[1]}",
-                        "ans": cells[2],
-                        "score": int(cells[3])
-                    })
-                messagebox.showinfo("成功", f"已載入 {len(self.answer_data)} 題解答")
-            except Exception as e:
-                messagebox.showerror("錯誤", f"Word 解析失敗: {e}")
-
-    def process_pdf(self, pdf_path):
+        if not path: return
+        
         try:
+            doc = Document(path)
+            self.answer_key = {}
+            temp_answers = []
+            
+            # 專門尋找包含聽力答案 (A, B, C) 的表格
+            for table in doc.tables:
+                for row in table.rows:
+                    cells = [c.text.strip().upper() for c in row.cells]
+                    # 如果這列包含 A, B 或 C，就認定它是答案列
+                    for val in cells:
+                        if val in ['A', 'B', 'C']:
+                            temp_answers.append(val)
+            
+            # 將抓到的答案編號 (1, 2, 3...)
+            for i, ans in enumerate(temp_answers):
+                self.answer_key[i + 1] = ans
+            
+            if self.answer_key:
+                self.status_var.set(f"成功！已載入 {len(self.answer_key)} 題聽力解答")
+                messagebox.showinfo("解析成功", f"偵測到 {len(self.answer_key)} 個聽力答案。")
+            else:
+                raise ValueError("在 Word 表格中找不到 A, B, C 格式的答案。")
+
+        except Exception as e:
+            messagebox.showerror("Word 解析失敗", f"錯誤原因：{str(e)}")
+
+    def start_grading(self):
+        if not self.answer_key:
+            messagebox.showwarning("提示", "請先載入正確解答！")
+            return
+        path = filedialog.askopenfilename(filetypes=[("PDF 檔案", "*.pdf")])
+        if path:
             self.result_box.delete("1.0", "end")
+            threading.Thread(target=self.grading_process, args=(path,), daemon=True).start()
+
+    def grading_process(self, pdf_path):
+        try:
+            self.status_var.set("正在執行 OCR 辨識 (可能需要 1-2 分鐘)...")
             if self.reader is None:
                 self.reader = easyocr.Reader(['ch_tra', 'en'])
 
-            # 將 PDF 每一頁轉為圖片進行 OCR
-            self.result_box.insert("end", "正在轉換 PDF 並辨識文字...\n")
-            pages = convert_from_path(pdf_path)
+            pages = convert_from_path(pdf_path, poppler_path=self.poppler_path)
             full_text = ""
-            
-            for i, page in enumerate(pages):
-                self.result_box.insert("end", f"正在辨識第 {i+1} 頁...\n")
-                # 將 PIL Image 轉為 numpy array 給 easyocr
-                img_array = np.array(page)
-                results = self.reader.readtext(img_array, detail=0)
-                full_text += "".join(results)
+            for page in pages:
+                img_np = np.array(page)
+                res = self.reader.readtext(img_np, detail=0)
+                full_text += "".join(res).upper()
 
-            # 比對邏輯
-            total = 0
-            report = "\n--- 評分結果 ---\n"
-            for item in self.answer_data:
-                if item["ans"] in full_text:
-                    total += item["score"]
-                    report += f"✅ {item['id']}: 正確 (+{item['score']})\n"
+            # 清理文字以利比對
+            clean_text = full_text.replace(" ", "").replace(".", "").replace(":", "")
+
+            correct = 0
+            report = "--- 評分報告 ---\n"
+            for q_num, ans in self.answer_key.items():
+                # 比對模式：例如 "1A", "2B"
+                pattern = f"{q_num}{ans}"
+                if pattern in clean_text:
+                    correct += 1
+                    report += f"第 {q_num} 題: ✅ 正確 ({ans})\n"
                 else:
-                    report += f"❌ {item['id']}: 錯誤 (解答: {item['ans']})\n"
+                    report += f"第 {q_num} 題: ❌ 錯誤 (正確解答: {ans})\n"
             
-            report += f"\n總分：{total} 分"
+            report += f"\n總結：答對 {correct} 題 / 總計 {len(self.answer_key)} 題"
             self.result_box.insert("end", report)
+            self.status_var.set("評分完成")
         except Exception as e:
-            messagebox.showerror("錯誤", f"處理失敗: {e}")
-
-    def start_processing_thread(self):
-        path = filedialog.askopenfilename(filetypes=[("PDF 檔案", "*.pdf")])
-        if path: threading.Thread(target=self.process_pdf, args=(path,), daemon=True).start()
+            self.result_box.insert("end", f"\n[錯誤] 執行失敗: {str(e)}")
+            self.status_var.set("執行發生錯誤")
 
 if __name__ == "__main__":
     app = AutoGraderApp()
