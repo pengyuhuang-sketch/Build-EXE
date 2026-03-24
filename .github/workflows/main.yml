@@ -1,17 +1,19 @@
-name: Build EXE for AutoGrader
+name: Build AutoGrader (Stable Folder Mode)
 
 on: [push]
 
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4  # 升級到 v4
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5 # 升級到 v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -20,12 +22,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install customtkinter pandas openpyxl easyocr pyinstaller torch torchvision
 
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (Folder Mode)
+        # 移除 --onefile，改用 --onedir (預設)，並排除問題模組
         run: |
-          pyinstaller --noconsole --onefile --collect-all easyocr --collect-all torch --name "AutoGrader_v1" AutoGrader.py
+          pyinstaller --noconsole --onedir --collect-all easyocr --collect-all torch --exclude-module PIL._avif --name "AutoGrader_v1" AutoGrader.py
 
-      - name: Upload EXE Artifact
-        uses: actions/upload-artifact@v4  # 解決錯誤的關鍵：升級到 v4
+      - name: Upload Folder Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: AutoGrader_Executable
-          path: dist/AutoGrader_v1.exe
+          name: AutoGrader_Full_Package
+          path: dist/AutoGrader_v1/
