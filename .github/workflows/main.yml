@@ -1,0 +1,16 @@
+name: Build EXE
+on: [push]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: pip install customtkinter pandas openpyxl easyocr pyinstaller
+      - name: Build with PyInstaller
+        run: pyinstaller --noconsole --onefile --collect-all easyocr AutoGrader.py
+      - name: Upload EXE
+        uses: actions/upload-artifact@v3
+        with:
+          name: MyAutoGrader
+          path: dist/AutoGrader.exe
