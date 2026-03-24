@@ -1,4 +1,4 @@
-name: Build Cloud AutoGrader v2
+name: Build Cloud AutoGrader v1
 
 on: [push]
 
@@ -22,7 +22,7 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --noconsole --onefile --name "AutoGrader_v2_Cloud" AutoGrader_Cloud_v2.py
+          pyinstaller --noconsole --onefile --name "AutoGrader_v1_Cloud" AutoGrader_Cloud_v1.py
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
