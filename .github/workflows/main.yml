@@ -1,13 +1,10 @@
-name: Build AutoGrader (Word/PDF Support)
+name: Build Cloud AutoGrader v2
 
 on: [push]
 
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -20,21 +17,15 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 增加 python-docx 和 pdf2image
-          pip install customtkinter pandas openpyxl easyocr pyinstaller torch torchvision python-docx pdf2image
+          # 加入 pandas 與 openpyxl 以支援 Excel 匯出
+          pip install customtkinter python-docx google-generativeai pandas openpyxl pyinstaller Pillow
 
-      - name: Install Poppler (For PDF processing)
-        shell: powershell
+      - name: Build EXE
         run: |
-          # 使用 choco 安裝 poppler，這是 pdf2image 必備的
-          choco install poppler
+          pyinstaller --noconsole --onefile --name "AutoGrader_v2_Cloud" AutoGrader_Cloud_v2.py
 
-      - name: Build with PyInstaller
-        run: |
-          pyinstaller --noconsole --onedir --collect-all easyocr --collect-all torch --exclude-module PIL._avif --name "AutoGrader_v2" AutoGrader.py
-
-      - name: Upload Artifact
+      - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: AutoGrader_Word_PDF
-          path: dist/AutoGrader_v2/
+          name: AutoGrader_Final_Version
+          path: dist/AutoGrader_v2_Cloud.exe
